@@ -26,7 +26,7 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_message = event.message.text
-    response = groq_client.chat_completion(prompt=user_message, model="llama3-70b")
+    response = groq_client.completion(prompt=user_message, model="llama3-8b")
     response_text = response.choices[0].text
     message = TextSendMessage(text=response_text)
     line_bot_api.reply_message(event.reply_token, message)
