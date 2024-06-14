@@ -26,8 +26,20 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_message = event.message.text
-    response = groq_client.completion(prompt=user_message, model="llama3-8b")
-    response_text = response.choices[0].text
+    response = groq_client.chat.completions.create(
+        messages=[
+            {
+                "role": "system",
+                "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答"
+            },
+            {
+                "role": "user",
+                "content": user_message,
+            }
+        ],
+        model="llama3-8b-8192",
+    )
+    response_text = response.message.content
     message = TextSendMessage(text=response_text)
     line_bot_api.reply_message(event.reply_token, message)
 
