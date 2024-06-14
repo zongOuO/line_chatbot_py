@@ -49,7 +49,7 @@ def handle_message(event):
         app.logger.info(f"Groq API response: {response}")
 
         # Assuming the response contains a 'choices' list with 'message' field
-        response_text = response.completion
+        response_text = response.choices[0].message.content
     except Exception as e:
         app.logger.error(f"Groq API error: {e}")
         response_text = "抱歉，目前無法處理您的請求。"
