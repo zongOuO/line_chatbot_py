@@ -1,78 +1,87 @@
-from flask import Flask, request, abort
+from flask import Flask, request, jsonify
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import *
+from linebot.models import TextSendMessage
 import os
 from groq import Groq
 from firebase import firebase
 
 app = Flask(__name__)
 
-# Initialize LINE Bot API and Webhook Handler
-line_bot_api = LineBotApi(os.environ['CHANNEL_ACCESS_TOKEN'])
-handler = WebhookHandler(os.environ['CHANNEL_SECRET'])
+# 使用環境變量讀取憑證
+groq_client = Groq(api_key=os.environ['GROQ_API_KEY'])
+token = os.getenv('LINE_BOT_TOKEN')
+secret = os.getenv('LINE_BOT_SECRET')
 firebase_url = os.getenv('FIREBASE_URL')
 
-# Initialize Groq Client
-groq_client = Groq(api_key=os.environ['GROQ_API_KEY'])
+line_bot_api = LineBotApi(token)
+handler = WebhookHandler(secret)
+
+def linebot(request):
+    body = request.get_data(as_text=True)
+    json_data = json.loads(body)
+    try:
+        signature = request.headers['X-Line-Signature']
+        handler.handle(body, signature)
+        event = json_data['events'][0]
+        tk = event['replyToken']
+        user_id = event['source']['userId']
+        msg_type = event['message']['type']
+
+        fdb = firebase.FirebaseApplication(firebase_url, None)
+        user_chat_path = f'chat/{user_id}'
+        chat_state_path = f'state/{user_id}'
+        LLM = fdb.get(user_chat_path, None)
+
+        if msg_type == 'text':
+            msg = event['message']['text']
+
+            if LLM is None:
+                messages = []
+            else:
+                messages = LLM
+
+            if msg == '!清空':
+                reply_msg = TextSendMessage(text='對話歷史紀錄已經清空！')
+                fdb.delete(user_chat_path, None)
+
+            else:
+                messages.append({"role": "user", "content": msg})
+                response = groq_client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答"
+                        },
+                        {
+                            "role": "user",
+                            "content": msg,
+                        }
+                    ],
+                    model="llama3-8b-8192",
+                )
+                ai_msg = response.choices[0].message.content.replace('\n', '')
+                messages.append({"role": "assistant", "content": ai_msg})
+                reply_msg = TextSendMessage(text=ai_msg)
+                fdb.put_async(user_chat_path, None , messages)
+
+            line_bot_api.reply_message(tk, reply_msg)
+
+        else:
+            reply_msg = TextSendMessage(text='你傳的不是文字訊息呦')
+            line_bot_api.reply_message(tk, reply_msg)
+
+    except Exception as e:
+        app.logger.error(f"Error: {str(e)}")
+        if 'tk' in locals():
+            reply_msg = TextSendMessage(text='抱歉，發生錯誤，請稍後再試。')
+            line_bot_api.reply_message(tk, reply_msg)
+    
+    return 'OK'
 
 @app.route("/callback", methods=['POST'])
 def callback():
-    # Get X-Line-Signature header value
-    signature = request.headers.get('X-Line-Signature', '')
-    # Get request body as text
-    body = request.get_data(as_text=True)
-    app.logger.info("Request body: " + body)
-
-    # Handle webhook body
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-    return 'OK'
-
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    fdb = firebase.FirebaseApplication(firebase_url, None)
-    user_id = event.source.user_id
-    user_chat_path = f'chat/{user_id}'
-    user_message = event.message.text
-    LLM = fdb.get(user_chat_path, None)
-    try:
-        if LLM is None:
-            messages2 = []
-        else:
-            messages2 = LLM
-
-        if user_message == "!清空":
-            response_text = "對話歷史紀錄已經清空！"
-            fdb.delete(user_chat_path, None)
-        else:
-            messages2.append({"role": "user", "content": user_message})
-            response = groq_client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答"
-                    },
-                    {
-                        "role": "user",
-                        "content": user_message,
-                    }
-                ],
-                model="llama3-8b-8192",
-            )
-            app.logger.info(f"Groq API response: {response}")
-            # Assuming the response contains a 'choices' list with 'message' field
-            response_text = response.choices[0].message.content
-            messages2.append({"role": "user", "content": response_text})
-            fdb.put_async(user_chat_path, None, messages2)
-    except Exception as e:
-        app.logger.error(f"Groq API error: {e}")
-        response_text = "抱歉，目前無法處理您的請求。"
-
-    message = TextSendMessage(text=response_text)
-    line_bot_api.reply_message(event.reply_token, message)
+    return linebot(request)
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
