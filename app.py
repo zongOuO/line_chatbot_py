@@ -38,33 +38,40 @@ def handle_message(event):
         fdb = firebase.FirebaseApplication(firebase_url, None)
         user_id = event.source.user_id
         user_chat_path = f'chat/{user_id}'
-        LLM = fdb.get(user_chat_path, 'messages')
+        chat_history = fdb.get(user_chat_path, 'messages')
         user_message = event.message.text
         
-        if LLM is None:
-            messages2 = []
-        else:
-            messages2 = LLM
+        if chat_history is None:
+            chat_history = []
         
         if user_message == "!清空":
             response_text = "對話歷史紀錄已經清空！"
             fdb.delete(user_chat_path, 'messages')
+            chat_history = []
         else:
-            messages2.append({"role": "user", "content": user_message})
+            # 添加用戶消息到歷史記錄
+            chat_history.append({"role": "user", "content": user_message})
+            
+            # 準備發送給 Groq 的消息列表
+            messages_for_groq = [
+                {"role": "system", "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答"}
+            ]
+            # 添加歷史對話，但限制總長度
+            messages_for_groq.extend(chat_history[-5:])  # 只使用最後5條對話
+            
             response = groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答"},
-                    {"role": "user", "content": user_message}
-                ],
+                messages=messages_for_groq,
                 model="llama3-8b-8192",
             )
             ai_msg = response.choices[0].message.content.replace('\n', '')
-            messages2.append({"role": "assistant", "content": ai_msg})
+            
+            # 添加 AI 回覆到歷史記錄
+            chat_history.append({"role": "assistant", "content": ai_msg})
             response_text = ai_msg
             
             # 更新firebase中的對話紀錄
             try:
-                fdb.put(user_chat_path, 'messages', messages2)
+                fdb.put(user_chat_path, 'messages', chat_history)
             except Exception as e:
                 app.logger.error(f"Firebase update error: {e}")
     except Exception as e:
@@ -73,7 +80,6 @@ def handle_message(event):
 
     message = TextSendMessage(text=response_text)
     line_bot_api.reply_message(event.reply_token, message)
-
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
