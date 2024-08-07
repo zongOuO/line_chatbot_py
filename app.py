@@ -5,6 +5,8 @@ from linebot.models import TextSendMessage
 import os
 from groq import Groq
 from firebase import firebase
+import json
+
 
 app = Flask(__name__)
 
