@@ -9,8 +9,8 @@ from groq import Groq
 app = Flask(__name__)
 
 # 設置環境變數
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv('CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_SECRET = os.getenv('CHANNEL_SECRET')
 FIREBASE_URL = os.getenv('FIREBASE_URL')
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
