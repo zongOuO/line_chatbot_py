@@ -4,28 +4,30 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import *
 import os
 from groq import Groq
-from firebase import firebase
-
+import firebase_admin
+from firebase_admin import credentials, db
 
 app = Flask(__name__)
 
 # Initialize LINE Bot API and Webhook Handler
 line_bot_api = LineBotApi(os.environ['LINE_CHANNEL_ACCESS_TOKEN'])
 handler = WebhookHandler(os.environ['LINE_CHANNEL_SECRET'])
-firebase_url = os.getenv('FIREBASE_URL')
+
+# Initialize Firebase Admin
+cred = credentials.Certificate(os.environ['FIREBASE_CREDENTIALS'])
+firebase_admin.initialize_app(cred, {
+    'databaseURL': os.getenv('FIREBASE_URL')
+})
 
 # Initialize Groq Client
 groq_client = Groq(api_key=os.environ['GROQ_API_KEY'])
 
 @app.route("/callback", methods=['POST'])
 def callback():
-    # Get X-Line-Signature header value
     signature = request.headers.get('X-Line-Signature', '')
-    # Get request body as text
     body = request.get_data(as_text=True)
     app.logger.info("Request body: " + body)
 
-    # Handle webhook body
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
@@ -34,13 +36,13 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-
     try:
-        fdb = firebase.FirebaseApplication(firebase_url, None)
         user_id = event.source.user_id
         user_chat_path = f'chat/{user_id}'
         chat_state_path = f'state/{user_id}'
-        LLM = fdb.get(user_chat_path, None)
+        
+        ref = db.reference(user_chat_path)
+        LLM = ref.get()
         user_message = event.message.text
         if LLM is None:
             messages2 = []
@@ -49,7 +51,7 @@ def handle_message(event):
         
         if user_message == "!清空":
             response_text = "對話歷史紀錄已經清空！"
-            fdb.delete(user_chat_path, None)
+            ref.delete()
         else:
             messages2.append({"role": "user", "content": user_message})
             response = groq_client.chat.completions.create(
@@ -67,11 +69,12 @@ def handle_message(event):
             )
             ai_msg = response.choices[0].message.content.replace('\n', '')
             messages2.append({"role": "assistant", "content": ai_msg})
-            response_text = response.choices[0].message.content
-            # 更新firebase中的對話紀錄
-            fdb.put_async(user_chat_path, None , messages2)
+            response_text = ai_msg
+            
+            # Update Firebase with the updated chat history
+            ref.set(messages2)
     except Exception as e:
-        app.logger.error(f"Groq API error: {e}")
+        app.logger.error(f"Error: {e}")
         response_text = "抱歉，目前無法處理您的請求。"
 
     message = TextSendMessage(text=response_text)
