@@ -41,17 +41,19 @@ def linebot():
         chatgpt = fdb.get(user_chat_path, None)
         app.logger.info(f"Firebase 返回的聊天記錄: {chatgpt}")
 
+        if chatgpt is None:
+            messages = []
+        else:
+            # 嘗試解析聊天記錄
+            try:
+                messages = chatgpt
+                app.logger.info(f"解析的聊天記錄: {messages}")
+            except (TypeError, json.JSONDecodeError) as e:
+                app.logger.error(f"聊天記錄解析錯誤: {e}")
+                messages = []
+
         if msg_type == 'text':
             msg = event['message']['text']
-
-            if chatgpt is None:
-                messages = []
-            else:
-                try:
-                    messages = chatgpt
-                except (TypeError, json.JSONDecodeError) as e:
-                    app.logger.error(f"處理聊天記錄時發生錯誤: {e}")
-                    messages = []
 
             if msg == '!清空':
                 reply_msg = TextSendMessage(text='對話歷史紀錄已經清空！')
@@ -90,6 +92,7 @@ def linebot():
         line_bot_api.reply_message(tk, TextSendMessage(text='抱歉，目前無法處理您的請求。'))
 
     return 'OK'
+
 
 if __name__ == "__main__":
     app.run(port=int(os.environ.get('PORT', 5000)))
