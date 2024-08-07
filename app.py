@@ -5,6 +5,7 @@ from linebot.models import *
 import os
 from groq import Groq
 from firebase import firebase
+import requests
 
 app = Flask(__name__)
 
