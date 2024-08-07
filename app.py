@@ -1,97 +1,91 @@
-from flask import Flask, request, abort
+import json
+from flask import Flask, request
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import *
+from linebot.models import TextSendMessage
+from firebase import firebase
 import os
 from groq import Groq
-from firebase import firebase
-import requests
 
 app = Flask(__name__)
 
+# 設置環境變數
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
+FIREBASE_URL = os.getenv('FIREBASE_URL')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+
 # 初始化 LINE Bot API 和 Webhook Handler
-line_bot_api = LineBotApi(os.environ['CHANNEL_ACCESS_TOKEN'])
-handler = WebhookHandler(os.environ['CHANNEL_SECRET'])
-firebase_url = os.getenv('FIREBASE_URL')
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# 初始化 Groq 客戶端
-groq_client = Groq(api_key=os.environ['GROQ_API_KEY'])
+# 初始化 Firebase 和 Groq 客戶端
+fdb = firebase.FirebaseApplication(FIREBASE_URL, None)
+groq_client = Groq(api_key=GROQ_API_KEY)
 
-@app.route("/callback", methods=['POST'])
-def callback():
-    # 取得 X-Line-Signature 標頭值
-    signature = request.headers.get('X-Line-Signature', '')
-    # 取得請求內容
+@app.route("/linebot", methods=['POST'])
+def linebot():
     body = request.get_data(as_text=True)
-    app.logger.info("請求內容: " + body)
-
-    # 處理 webhook 內容
+    json_data = json.loads(body)
     try:
+        signature = request.headers['X-Line-Signature']
         handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-    return 'OK'
 
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    fdb = firebase.FirebaseApplication(firebase_url, None)
-    user_id = event.source.user_id
-    user_chat_path = f'chat/{user_id}'
-    user_message = event.message.text
+        # 取得事件
+        event = json_data['events'][0]
+        tk = event['replyToken']
+        user_id = event['source']['userId']
+        msg_type = event['message']['type']
 
-    response = None  # 初始化 response 變數
-    messages2 = []    # 初始化 messages2 變數
+        # 取得聊天記錄
+        user_chat_path = f'chat/{user_id}'
+        chatgpt = fdb.get(user_chat_path, None)
 
-    try:
-        # 處理特殊命令
-        if user_message == "!清空":
-            response_text = "對話歷史紀錄已經清空！"
-            fdb.delete(user_chat_path, None)
+        if msg_type == 'text':
+            msg = event['message']['text']
+
+            if chatgpt is None:
+                messages = []
+            else:
+                messages = chatgpt
+
+            if msg == '!清空':
+                reply_msg = TextSendMessage(text='對話歷史紀錄已經清空！')
+                fdb.delete(user_chat_path, None)
+                messages = []  # 清空對話紀錄
+
+            else:
+                messages.append({"role": "user", "content": msg})
+                response = groq_client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答"
+                        },
+                        {
+                            "role": "user",
+                            "content": msg
+                        }
+                    ],
+                    model="llama3-8b-8192"
+                )
+                # 確認 API 回應的正確解析
+                ai_msg = response.choices[0].message['content'].replace('\n', '') if response.choices else "未收到回應"
+                messages.append({"role": "assistant", "content": ai_msg})
+                reply_msg = TextSendMessage(text=ai_msg)
+                # 更新 Firebase 中的對話紀錄
+                fdb.put(user_chat_path, None, messages)
+
+            line_bot_api.reply_message(tk, reply_msg)
+
         else:
-            # 確保 messages2 在正常流程中有初始值
-            try:
-                messages2 = fdb.get(user_chat_path, [])
-            except Exception as e:
-                app.logger.error(f"讀取聊天記錄時發生錯誤: {e}")
-                messages2 = []
+            reply_msg = TextSendMessage(text='你傳的不是文字訊息呦')
+            line_bot_api.reply_message(tk, reply_msg)
 
-            # 將使用者消息加入聊天記錄
-            messages2.append({"role": "user", "content": user_message})
-
-            # 向 Groq API 請求完成結果
-            response = groq_client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答"
-                    },
-                    {
-                        "role": "user",
-                        "content": user_message,
-                    }
-                ],
-                model="llama3-8b-8192",
-            )
-
-            # 提取回應文本
-            app.logger.info(f"Groq API 回應: {response}")
-            response_text = response.choices[0].message.content if response.choices else "未收到回應"
-
-            # 更新聊天記錄
-            messages2.append({"role": "assistant", "content": response_text})
-            fdb.put_async(user_chat_path, None, messages2)
-    except requests.exceptions.JSONDecodeError as e:
-        app.logger.error(f"JSON 解碼錯誤: {e}")
-        response_text = "抱歉，處理資料時出現問題。"
     except Exception as e:
         app.logger.error(f"處理消息時發生錯誤: {e}")
-        response_text = "抱歉，目前無法處理您的請求。"
+        line_bot_api.reply_message(tk, TextSendMessage(text='抱歉，目前無法處理您的請求。'))
 
-    # 回覆使用者
-    message = TextSendMessage(text=response_text)
-    line_bot_api.reply_message(event.reply_token, message)
-
+    return 'OK'
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(port=int(os.environ.get('PORT', 5000)))
