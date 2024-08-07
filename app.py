@@ -38,7 +38,7 @@ def handle_message(event):
         fdb = firebase.FirebaseApplication(firebase_url, None)
         user_id = event.source.user_id
         user_chat_path = f'chat/{user_id}'
-        LLM = fdb.get(user_chat_path, None)
+        LLM = fdb.get(user_chat_path, 'messages')
         user_message = event.message.text
         
         if LLM is None:
@@ -48,7 +48,7 @@ def handle_message(event):
         
         if user_message == "!清空":
             response_text = "對話歷史紀錄已經清空！"
-            fdb.delete(user_chat_path, None)
+            fdb.delete(user_chat_path, 'messages')
         else:
             messages2.append({"role": "user", "content": user_message})
             response = groq_client.chat.completions.create(
@@ -64,7 +64,7 @@ def handle_message(event):
             
             # 更新firebase中的對話紀錄
             try:
-                fdb.put(user_chat_path, None , messages2)
+                fdb.put(user_chat_path, 'messages', messages2)
             except Exception as e:
                 app.logger.error(f"Firebase update error: {e}")
     except Exception as e:
