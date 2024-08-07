@@ -56,26 +56,27 @@ def handle_message(event):
             messages_for_groq = [
                 {"role": "system", "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答"}
             ]
-            # 添加歷史對話，但限制總長度
-            messages_for_groq.extend(chat_history[-5:])  # 只使用最後5條對話
+            # 添加完整的歷史對話
+            messages_for_groq.extend(chat_history)
             
-            response = groq_client.chat.completions.create(
-                messages=messages_for_groq,
-                model="llama3-8b-8192",
-            )
-            ai_msg = response.choices[0].message.content.replace('\n', '')
-            
-            # 添加 AI 回覆到歷史記錄
-            chat_history.append({"role": "assistant", "content": ai_msg})
-            response_text = ai_msg
-            
-            # 更新firebase中的對話紀錄
             try:
+                response = groq_client.chat.completions.create(
+                    messages=messages_for_groq,
+                    model="llama3-8b-8192",
+                )
+                ai_msg = response.choices[0].message.content.replace('\n', '')
+                
+                # 添加 AI 回覆到歷史記錄
+                chat_history.append({"role": "assistant", "content": ai_msg})
+                response_text = ai_msg
+                
+                # 更新firebase中的對話紀錄
                 fdb.put(user_chat_path, 'messages', chat_history)
             except Exception as e:
-                app.logger.error(f"Firebase update error: {e}")
+                app.logger.error(f"Groq API error: {e}")
+                response_text = "抱歉，AI 回應時發生錯誤。可能是因為對話歷史過長，請嘗試清空對話歷史。"
     except Exception as e:
-        app.logger.error(f"Groq API error: {e}")
+        app.logger.error(f"General error: {e}")
         response_text = "抱歉，目前無法處理您的請求。"
 
     message = TextSendMessage(text=response_text)
