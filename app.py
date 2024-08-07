@@ -10,8 +10,8 @@ app = Flask(__name__)
 
 # 使用環境變量讀取憑證
 groq_client = Groq(api_key=os.environ['GROQ_API_KEY'])
-token = os.getenv('LINE_BOT_TOKEN')
-secret = os.getenv('LINE_BOT_SECRET')
+token = os.getenv('CHANNEL_ACCESS_TOKEN')
+secret = os.getenv('CHANNEL_SECRET')
 firebase_url = os.getenv('FIREBASE_URL')
 
 line_bot_api = LineBotApi(token)
