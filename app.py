@@ -7,50 +7,36 @@ from groq import Groq
 from firebase import firebase
 import json
 
+
 app = Flask(__name__)
 
 # 使用環境變量讀取憑證
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-CHANNEL_ACCESS_TOKEN = os.getenv('CHANNEL_ACCESS_TOKEN')
-CHANNEL_SECRET = os.getenv('CHANNEL_SECRET')
-FIREBASE_URL = os.getenv('FIREBASE_URL')
+groq_client = Groq(api_key=os.environ['GROQ_API_KEY'])
+token = os.getenv('CHANNEL_ACCESS_TOKEN')
+secret = os.getenv('CHANNEL_SECRET')
+firebase_url = os.getenv('FIREBASE_URL')
 
-if not all([GROQ_API_KEY, CHANNEL_ACCESS_TOKEN, CHANNEL_SECRET, FIREBASE_URL]):
-    raise ValueError("Missing one or more environment variables")
+line_bot_api = LineBotApi(token)
+handler = WebhookHandler(secret)
 
-groq_client = Groq(api_key=GROQ_API_KEY)
-line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
-handler = WebhookHandler(CHANNEL_SECRET)
-
-@app.route("/callback", methods=['POST'])
-def callback():
+def linebot(request):
     body = request.get_data(as_text=True)
-    app.logger.info(f"Request body: {body}")
-    
+    json_data = json.loads(body)
     try:
         signature = request.headers['X-Line-Signature']
         handler.handle(body, signature)
-        return 'OK'
-    except InvalidSignatureError:
-        app.logger.error("Invalid signature.")
-        return 'Invalid signature', 400
-    except Exception as e:
-        app.logger.error(f"Error handling request: {str(e)}")
-        return 'Internal Server Error', 500
+        event = json_data['events'][0]
+        tk = event['replyToken']
+        user_id = event['source']['userId']
+        msg_type = event['message']['type']
 
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    try:
-        user_id = event.source.user_id
-        tk = event.reply_token
-        msg_type = event.message.type
-
-        fdb = firebase.FirebaseApplication(FIREBASE_URL, None)
+        fdb = firebase.FirebaseApplication(firebase_url, None)
         user_chat_path = f'chat/{user_id}'
+        chat_state_path = f'state/{user_id}'
         LLM = fdb.get(user_chat_path, None)
 
         if msg_type == 'text':
-            msg = event.message.text
+            msg = event['message']['text']
 
             if LLM is None:
                 messages = []
@@ -60,6 +46,7 @@ def handle_message(event):
             if msg == '!清空':
                 reply_msg = TextSendMessage(text='對話歷史紀錄已經清空！')
                 fdb.delete(user_chat_path, None)
+
             else:
                 messages.append({"role": "user", "content": msg})
                 response = groq_client.chat.completions.create(
@@ -78,21 +65,19 @@ def handle_message(event):
                 ai_msg = response.choices[0].message.content.replace('\n', '')
                 messages.append({"role": "assistant", "content": ai_msg})
                 reply_msg = TextSendMessage(text=ai_msg)
-                fdb.put_async(user_chat_path, None, messages)
+                fdb.put_async(user_chat_path, None , messages)
 
             line_bot_api.reply_message(tk, reply_msg)
+
         else:
-            reply_msg = TextSendMessage(text='請傳送文字訊息!')
+            reply_msg = TextSendMessage(text='你傳的不是文字訊息呦')
             line_bot_api.reply_message(tk, reply_msg)
 
     except Exception as e:
-        app.logger.error(f"Error in message handling: {str(e)}")
+        app.logger.error(f"Error: {str(e)}")
         if 'tk' in locals():
             reply_msg = TextSendMessage(text='抱歉，發生錯誤，請稍後再試。')
             line_bot_api.reply_message(tk, reply_msg)
-
+    
     return 'OK'
 
-if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
