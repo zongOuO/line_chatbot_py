@@ -6,7 +6,6 @@ import os
 from groq import Groq
 from firebase import firebase
 
-
 app = Flask(__name__)
 
 # Initialize LINE Bot API and Webhook Handler
@@ -44,13 +43,14 @@ def handle_message(event):
             messages2 = []
         else:
             messages2 = LLM
+
         if user_message == "!清空":
             response_text = "對話歷史紀錄已經清空！"
             fdb.delete(user_chat_path, None)
         else:
             messages2.append({"role": "user", "content": user_message})
             response = groq_client.chat.completions.create(
-                messages[
+                messages=[
                     {
                         "role": "system",
                         "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答"
@@ -66,7 +66,7 @@ def handle_message(event):
             # Assuming the response contains a 'choices' list with 'message' field
             response_text = response.choices[0].message.content
             messages2.append({"role": "user", "content": response_text})
-            fdb.put_async(user_chat_path, None , messages2)
+            fdb.put_async(user_chat_path, None, messages2)
     except Exception as e:
         app.logger.error(f"Groq API error: {e}")
         response_text = "抱歉，目前無法處理您的請求。"
