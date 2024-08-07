@@ -39,17 +39,22 @@ def handle_message(event):
     user_chat_path = f'chat/{user_id}'
     user_message = event.message.text
 
-    try:
-        if response is None:
-            messages2 = []
-        else:
-            messages2 = response
+    response = None  # 初始化 response 變數
+    messages2 = []    # 初始化 messages2 變數
 
+    try:
         # 處理特殊命令
         if user_message == "!清空":
             response_text = "對話歷史紀錄已經清空！"
             fdb.delete(user_chat_path, None)
         else:
+            # 確保 messages2 在正常流程中有初始值
+            try:
+                messages2 = fdb.get(user_chat_path, [])
+            except Exception as e:
+                app.logger.error(f"讀取聊天記錄時發生錯誤: {e}")
+                messages2 = []
+
             # 將使用者消息加入聊天記錄
             messages2.append({"role": "user", "content": user_message})
 
@@ -85,6 +90,7 @@ def handle_message(event):
     # 回覆使用者
     message = TextSendMessage(text=response_text)
     line_bot_api.reply_message(event.reply_token, message)
+
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
