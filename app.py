@@ -3,14 +3,14 @@ from flask import Flask, request
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import TextSendMessage
 from firebase import firebase
-import os
 from groq import Groq
+import os
 
 app = Flask(__name__)
 
 # 設置環境變數
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv('CHANNEL_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.getenv('CHANNEL_SECRET')
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
+LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
 FIREBASE_URL = os.getenv('FIREBASE_URL')
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
@@ -39,6 +39,7 @@ def linebot():
         # 取得聊天記錄
         user_chat_path = f'chat/{user_id}'
         chatgpt = fdb.get(user_chat_path, None)
+        app.logger.info(f"Firebase 返回的聊天記錄: {chatgpt}")
 
         if msg_type == 'text':
             msg = event['message']['text']
@@ -46,7 +47,11 @@ def linebot():
             if chatgpt is None:
                 messages = []
             else:
-                messages = chatgpt
+                try:
+                    messages = chatgpt
+                except (TypeError, json.JSONDecodeError) as e:
+                    app.logger.error(f"處理聊天記錄時發生錯誤: {e}")
+                    messages = []
 
             if msg == '!清空':
                 reply_msg = TextSendMessage(text='對話歷史紀錄已經清空！')
@@ -68,7 +73,6 @@ def linebot():
                     ],
                     model="llama3-8b-8192"
                 )
-                # 確認 API 回應的正確解析
                 ai_msg = response.choices[0].message['content'].replace('\n', '') if response.choices else "未收到回應"
                 messages.append({"role": "assistant", "content": ai_msg})
                 reply_msg = TextSendMessage(text=ai_msg)
