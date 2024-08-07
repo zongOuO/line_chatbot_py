@@ -35,15 +35,11 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     fdb = firebase.FirebaseApplication(firebase_url, None)
-    user_id = event.source.user_id  # 更改此行
+    user_id = event.source.user_id
     user_chat_path = f'chat/{user_id}'
     user_message = event.message.text
 
     try:
-        # 從 Firebase 取得聊天記錄
-        response = fdb.get(user_chat_path, None)
-        app.logger.info(f"Firebase 回應: {response}")
-
         if response is None:
             messages2 = []
         else:
