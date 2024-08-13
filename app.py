@@ -15,7 +15,7 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.environ['LINE_CHANNEL_ACCESS_TOKEN'])
 handler = WebhookHandler(os.environ['LINE_CHANNEL_SECRET'])
 firebase_url = os.getenv('FIREBASE_URL')
-weather_api_key = 'CWA-15D3F278-DD19-4A8A-8749-96E501C29814'
+weather_api_key = os.getenv('WEATHER_API_KEY')
 
 
 # Initialize Groq Client
@@ -106,7 +106,7 @@ def handle_message(event):
                     if location in user_message:
                         matched_locations = location
                 weather_info = weather(location)
-                user_message = weather_info + user_message
+                user_message = str(weather_info) + user_message
             # 添加用戶消息到歷史記錄
             chat_history.append({"role": "user", "content": user_message})
             
