@@ -105,7 +105,8 @@ def handle_message(event):
                 for location in location_map.keys():
                     if location in user_message:
                         matched_locations = location
-                weather_info = weather(location)
+                        break
+                weather_info = weather(matched_locations)
                 user_message = str(weather_info) + user_message
             # 添加用戶消息到歷史記錄
             chat_history.append({"role": "user", "content": user_message})
