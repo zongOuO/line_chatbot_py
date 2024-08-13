@@ -15,7 +15,7 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.environ['LINE_CHANNEL_ACCESS_TOKEN'])
 handler = WebhookHandler(os.environ['LINE_CHANNEL_SECRET'])
 firebase_url = os.getenv('FIREBASE_URL')
-weather_api_key = 'WEATHER_API_KEY'
+weather_api_key = os.getenv('WEATHER_API_KEY')
 
 
 # Initialize Groq Client
