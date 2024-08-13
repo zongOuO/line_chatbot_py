@@ -5,6 +5,8 @@ from linebot.models import *
 import os
 from groq import Groq
 from firebase import firebase
+import requests
+
 
 
 app = Flask(__name__)
@@ -13,9 +15,57 @@ app = Flask(__name__)
 line_bot_api = LineBotApi(os.environ['LINE_CHANNEL_ACCESS_TOKEN'])
 handler = WebhookHandler(os.environ['LINE_CHANNEL_SECRET'])
 firebase_url = os.getenv('FIREBASE_URL')
+weather_api_key = 'WEATHER_API_KEY'
+
 
 # Initialize Groq Client
 groq_client = Groq(api_key=os.environ['GROQ_API_KEY'])
+
+
+locationlist = ['宜蘭縣', '花蓮縣', '臺東縣', '澎湖縣', '金門縣', '連江縣', '臺北市', '新北市', '桃園市', '臺中市', '臺南市', '高雄市', '基隆市', '新竹縣', '新竹市', '苗栗縣', '彰化縣', '南投縣', '雲林縣', '嘉義縣', '嘉義市', '屏東縣']
+location_map = {
+    '宜蘭': locationlist[0], '宜蘭縣': locationlist[0],
+    '花蓮': locationlist[1], '花蓮縣': locationlist[1],
+    '台東': locationlist[2], '臺東': locationlist[2], '台東縣': locationlist[2], '臺東縣': locationlist[2],
+    '澎湖': locationlist[3], '澎湖縣': locationlist[3],
+    '金門': locationlist[4], '金門縣': locationlist[4],
+    '連江': locationlist[5], '連江縣': locationlist[5],
+    '台北': locationlist[6], '台北市': locationlist[6], '臺北市': locationlist[6],
+    '新北': locationlist[7], '新北市': locationlist[7],
+    '桃園': locationlist[8], '桃園市': locationlist[8],
+    '台中': locationlist[9], '台中市': locationlist[9], '臺中市': locationlist[9],
+    '台南': locationlist[10], '台南市': locationlist[10], '臺南市': locationlist[10],
+    '高雄': locationlist[11], '高雄市': locationlist[11],
+    '基隆': locationlist[12], '基隆市': locationlist[12],
+    '新竹': locationlist[13], '新竹縣': locationlist[13],
+    '新竹市': locationlist[14],
+    '苗栗': locationlist[15], '苗栗縣': locationlist[15],
+    '彰化': locationlist[16], '彰化縣': locationlist[16],
+    '南投': locationlist[17], '南投縣': locationlist[17],
+    '雲林': locationlist[18], '雲林縣': locationlist[18],
+    '嘉義': locationlist[19], '嘉義縣': locationlist[19],
+    '嘉義市': locationlist[20],
+    '屏東': locationlist[21], '屏東縣': locationlist[21],
+    }
+
+def weather(user_location):
+    if user_location in location_map:
+        city = location_map[user_location]
+        api_url = f'https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization={weather_api_key}&locationName={city}'
+        try:
+            response = requests.get(api_url)
+            response.raise_for_status()  # 這會引發 HTTPError，讓你可以處理響應錯誤
+            data = response.json()
+            # 確保 data 包含預期的字段
+            return data
+        except requests.exceptions.RequestException as e:
+            app.logger.error(f"Weather API request error: {e}")
+            return None
+    else:
+        app.logger.warning("Unsupported location")
+        return None
+
+
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -49,6 +99,14 @@ def handle_message(event):
             fdb.delete(user_chat_path, 'messages')
             chat_history = []
         else:
+            if "天氣查詢" in user_message:
+
+                # 遍歷 location_map 辭典的所有鍵
+                for location in location_map.keys():
+                    if location in user_message:
+                        matched_locations = location
+                weather_info = weather(location)
+                user_message = weather_info + user_message
             # 添加用戶消息到歷史記錄
             chat_history.append({"role": "user", "content": user_message})
             
