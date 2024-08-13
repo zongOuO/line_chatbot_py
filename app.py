@@ -113,8 +113,7 @@ def handle_message(event):
             
             # 準備發送給 Groq 的消息列表
             messages_for_groq = [
-                {"role": "system", "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答"}
-            ]
+                {"role": "system", "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答，口氣要親切。如果有看到天氣json檔案，請你記得Wx=天氣現象,MaxT=最高溫度,MinT=最低溫度,CI=舒適度,PoP=降雨機率"}]
             # 添加完整的歷史對話
             messages_for_groq.extend(chat_history)
             
