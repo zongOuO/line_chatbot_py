@@ -86,12 +86,6 @@ def parse_weather_data(data):
                         value += '%'
                     weather_info[time_key][element_names.get(element_name, element_name)] = value
 
-    print(f"{location_name}天氣預報：", file=output)
-    for time_slot, info in weather_info.items():
-        print(f"\n時間區間：{time_key}", file=output)
-        for key, value in info.items():
-            print(f"  {key}：{value}", file=output)
-
     return output.getvalue()
 
 def weather(user_location):
