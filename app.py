@@ -48,6 +48,50 @@ location_map = {
     '屏東': locationlist[21], '屏東縣': locationlist[21],
     }
 
+def parse_weather_data(data):
+    output = StringIO()
+    location = data['records']['location'][0]
+    location_name = location['locationName']
+    weather_elements = location['weatherElement']
+
+    weather_info = {}
+
+    element_names = {
+        'Wx': '天氣現象',
+        'MaxT': '最高溫度',
+        'MinT': '最低溫度',
+        'CI': '舒適度',
+        'PoP': '降雨機率'
+    }
+
+    for element in weather_elements:
+        element_name = element['elementName']
+        for time_slot in element['time']:
+            start_time = datetime.strptime(time_slot['startTime'], "%Y-%m-%d %H:%M:%S")
+            end_time = datetime.strptime(time_slot['endTime'], "%Y-%m-%d %H:%M:%S")
+            time_key = f"{start_time.strftime('%Y-%m-%d %H:%M')} 至 {end_time.strftime('%Y-%m-%d %H:%M')}"
+            
+            if time_key not in weather_info:
+                weather_info[time_key] = {}
+            
+            if 'parameter' in time_slot:
+                param = time_slot['parameter']
+                if 'parameterName' in param:
+                    value = param['parameterName']
+                    if element_name in ['MaxT', 'MinT']:
+                        value += '°C'
+                    elif element_name == 'PoP':
+                        value += '%'
+                    weather_info[time_key][element_names.get(element_name, element_name)] = value
+
+    print(f"{location_name}天氣預報：", file=output)
+    for time_slot, info in weather_info.items():
+        print(f"\n時間區間：{time_key}", file=output)
+        for key, value in info.items():
+            print(f"  {key}：{value}", file=output)
+
+    return output.getvalue()
+
 def weather(user_location):
     if user_location in location_map:
         city = location_map[user_location]
@@ -57,7 +101,7 @@ def weather(user_location):
             response.raise_for_status()  # 這會引發 HTTPError，讓你可以處理響應錯誤
             data = response.json()
             # 確保 data 包含預期的字段
-            return data
+            return parse_weather_data(data)
         except requests.exceptions.RequestException as e:
             app.logger.error(f"Weather API request error: {e}")
             return None
@@ -99,7 +143,7 @@ def handle_message(event):
             fdb.delete(user_chat_path, 'messages')
             chat_history = []
         else:
-            if "天氣查詢" in user_message:
+            if "查詢天氣" or "天氣查詢" in user_message:
 
                 # 遍歷 location_map 辭典的所有鍵
                 for location in location_map.keys():
@@ -113,7 +157,7 @@ def handle_message(event):
             
             # 準備發送給 Groq 的消息列表
             messages_for_groq = [
-                {"role": "system", "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答，口氣要親切。如果有看到天氣json檔案，請你記得Wx=天氣現象,MaxT=最高溫度,MinT=最低溫度,CI=舒適度,PoP=降雨機率"}]
+                {"role": "system", "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答，口氣要親切。"}]
             # 添加完整的歷史對話
             messages_for_groq.extend(chat_history)
             
