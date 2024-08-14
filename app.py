@@ -155,10 +155,7 @@ def handle_message(event):
                 
                 if matched_locations:
                     weather_info = weather(matched_locations)
-                    response_text = weather_info
-                    message = TextSendMessage(text=response_text)
-                    line_bot_api.reply_message(event.reply_token, message)
-                    return
+                    user_message = weather_info + user_message
                 else:
                     user_message = "未找到匹配的地點，無法查詢天氣。" + user_message
 
