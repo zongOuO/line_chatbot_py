@@ -86,6 +86,12 @@ def parse_weather_data(data):
                         value += '%'
                     weather_info[time_key][element_names.get(element_name, element_name)] = value
 
+    print(f"{location_name}天氣預報：", file=output)
+    for time_key, info in weather_info.items():
+        print(f"\n時間區間：{time_key}", file=output)
+        for key, value in info.items():
+            print(f"  {key}：{value}", file=output)
+
     return output.getvalue()
 
 def weather(user_location):
@@ -100,10 +106,10 @@ def weather(user_location):
             return parse_weather_data(data)
         except requests.exceptions.RequestException as e:
             app.logger.error(f"Weather API request error: {e}")
-            return None
+            return "抱歉，獲取天氣資訊時出錯。"
     else:
         app.logger.warning("Unsupported location")
-        return None
+        return "抱歉，不支持該地點的天氣查詢。"
 
 
 
@@ -149,7 +155,10 @@ def handle_message(event):
                 
                 if matched_locations:
                     weather_info = weather(matched_locations)
-                    user_message = str(weather_info) + user_message
+                    response_text = weather_info
+                    message = TextSendMessage(text=response_text)
+                    line_bot_api.reply_message(event.reply_token, message)
+                    return
                 else:
                     user_message = "未找到匹配的地點，無法查詢天氣。" + user_message
 
