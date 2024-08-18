@@ -145,7 +145,7 @@ def handle_message(event):
             fdb.delete(user_chat_path, 'messages')
             chat_history = []
         else:
-            if "查詢天氣" in user_message or "天氣查詢" in user_message:
+            if "查詢天氣" in user_message or "天氣查詢" in user_message or ("查詢" in user_message and "天氣" in user_message):
                 matched_locations = None
                 # 遍歷 location_map 辭典的所有鍵
                 for location in location_map.keys():
