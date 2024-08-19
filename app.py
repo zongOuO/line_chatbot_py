@@ -166,7 +166,7 @@ def handle_message(event):
             fdb.delete(user_chat_path, 'messages')
             chat_history = []
         if user_message == "!預設LLM回覆語氣":
-            response_text = "對話歷史紀錄已經清空！"
+            response_text = "已經回復預設LLM回覆語氣！"
             fdb.delete(user_chat_path, 'role')
             role_content = "你只會繁體中文，回答任何問題時，都會使用繁體中文回答，口氣要親切。"
         else:
