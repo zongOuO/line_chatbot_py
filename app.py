@@ -158,8 +158,10 @@ def handle_message(event):
         
         if chat_history is None:
             chat_history = []
+
         if role_content is None:
             role_content = "你只會繁體中文，回答任何問題時，都會使用繁體中文回答，口氣要親切。"
+            fdb.put(user_chat_path, 'role', role_content)
         
         if user_message == "!清空對話紀錄":
             response_text = "對話歷史紀錄已經清空！"
@@ -169,9 +171,10 @@ def handle_message(event):
             response_text = "已經回復預設LLM回覆語氣！"
             fdb.delete(user_chat_path, 'role')
             role_content = "你只會繁體中文，回答任何問題時，都會使用繁體中文回答，口氣要親切。"
+        elif "!修改LLM回覆語氣" in user_message:
+            role_content = user_message.strip("!修改LLM回覆語氣")[1:]
+            fdb.put(user_chat_path, 'role', role_content)
         else:
-            if "!修改LLM回覆語氣" in user_message:
-                role_content = user_message.strip("!修改LLM回覆語氣")[1:]
             if "查詢天氣" in user_message or "天氣查詢" in user_message or ("查詢" in user_message and "天氣" in user_message):
                 matched_locations = None
                 # 遍歷 location_map 辭典的所有鍵
