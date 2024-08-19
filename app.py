@@ -50,6 +50,24 @@ location_map = {
     '屏東': locationlist[21], '屏東縣': locationlist[21],
     }
 
+def LLM(fdb,messages_for_LLM,chat_history,user_chat_path):
+    try:
+        response = groq_client.chat.completions.create(
+            messages=messages_for_LLM,
+            model="llama3-8b-8192",
+        )
+        ai_msg = response.choices[0].message.content.replace('\n', '')
+                
+        # 添加 AI 回覆到歷史記錄
+        chat_history.append({"role": "assistant", "content": ai_msg})
+        response_text = ai_msg
+        # 更新firebase中的對話紀錄
+        fdb.put(user_chat_path, 'messages', chat_history)
+    except Exception as e:
+        app.logger.error(f"Groq API error: {e}")
+        response_text = "抱歉，AI 回應時發生錯誤。可能是因為對話歷史過長，請嘗試清空對話歷史。"
+    return response_text
+
 def parse_weather_data(data):
     output = StringIO()
     location = data['records']['location'][0]
@@ -135,16 +153,25 @@ def handle_message(event):
         user_id = event.source.user_id
         user_chat_path = f'chat/{user_id}'
         chat_history = fdb.get(user_chat_path, 'messages')
+        role_content = fdb.get(user_chat_path, 'role')
         user_message = event.message.text
         
         if chat_history is None:
             chat_history = []
+        if role_content is None:
+            role_content = "你只會繁體中文，回答任何問題時，都會使用繁體中文回答，口氣要親切。"
         
-        if user_message == "!清空":
+        if user_message == "!清空對話紀錄":
             response_text = "對話歷史紀錄已經清空！"
             fdb.delete(user_chat_path, 'messages')
             chat_history = []
+        if user_message == "!預設LLM回覆語氣":
+            response_text = "對話歷史紀錄已經清空！"
+            fdb.delete(user_chat_path, 'role')
+            role_content = "你只會繁體中文，回答任何問題時，都會使用繁體中文回答，口氣要親切。"
         else:
+            if "!修改LLM回覆語氣" in user_message:
+                role_content = user_message.strip("!修改LLM回覆語氣")[1:]
             if "查詢天氣" in user_message or "天氣查詢" in user_message or ("查詢" in user_message and "天氣" in user_message):
                 matched_locations = None
                 # 遍歷 location_map 辭典的所有鍵
@@ -162,28 +189,14 @@ def handle_message(event):
             # 添加用戶消息到歷史記錄
             chat_history.append({"role": "user", "content": user_message})
             
-            # 準備發送給 Groq 的消息列表
-            messages_for_groq = [
-                {"role": "system", "content": "你只會繁體中文，回答任何問題時，都會使用繁體中文回答，口氣要親切。"}]
+            # 準備發送給 LLM 的消息列表
+            messages_for_LLM = [
+                {"role": "system", "content": role_content}]
             # 添加完整的歷史對話
-            messages_for_groq.extend(chat_history)
+            messages_for_LLM.extend(chat_history)
+            #把訊息傳送給LLM
+            response_text = LLM(fdb,messages_for_LLM,chat_history,user_chat_path)
             
-            try:
-                response = groq_client.chat.completions.create(
-                    messages=messages_for_groq,
-                    model="llama3-8b-8192",
-                )
-                ai_msg = response.choices[0].message.content.replace('\n', '')
-                
-                # 添加 AI 回覆到歷史記錄
-                chat_history.append({"role": "assistant", "content": ai_msg})
-                response_text = ai_msg
-                
-                # 更新firebase中的對話紀錄
-                fdb.put(user_chat_path, 'messages', chat_history)
-            except Exception as e:
-                app.logger.error(f"Groq API error: {e}")
-                response_text = "抱歉，AI 回應時發生錯誤。可能是因為對話歷史過長，請嘗試清空對話歷史。"
     except Exception as e:
         app.logger.error(f"General error: {e}")
         response_text = "抱歉，目前無法處理您的請求。"
