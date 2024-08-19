@@ -172,6 +172,7 @@ def handle_message(event):
             fdb.delete(user_chat_path, 'role')
             role_content = "你只會繁體中文，回答任何問題時，都會使用繁體中文回答，口氣要親切。"
         elif "!修改LLM回覆語氣" in user_message:
+            response_text = "已修改LLM回覆語氣！"
             role_content = user_message.strip("!修改LLM回覆語氣")[1:]
             fdb.put(user_chat_path, 'role', role_content)
         else:
